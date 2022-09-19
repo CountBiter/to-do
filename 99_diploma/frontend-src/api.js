@@ -1,4 +1,4 @@
-const PREFIX = "???";
+const PREFIX = "http://localhost:3000";
 
 const req = (url, options = {}) => {
   const { body } = options;
@@ -22,6 +22,7 @@ const req = (url, options = {}) => {
         })
   );
 };
+
 
 export const getNotes = ({ age, search, page } = {}) => {};
 
