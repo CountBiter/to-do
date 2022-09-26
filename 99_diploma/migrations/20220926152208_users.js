@@ -7,7 +7,7 @@ exports.up = function (knex) {
     table.increments("_id");
     table.string("username", 255).notNullable().unique();
     table.string("password", 255).notNullable();
-    table.string("id").unique()
+    table.string("id").unique();
   });
 };
 
@@ -18,3 +18,7 @@ exports.up = function (knex) {
 exports.down = function (knex) {
   return knex.schema.dropTable("users");
 };
+
+
+
+

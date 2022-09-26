@@ -1,6 +1,3 @@
-import _parseDate from "date-fns/parseISO";
-import _formatDate from "date-fns/format";
-
 import regexparam from "regexparam";
 
 // routing
@@ -53,8 +50,7 @@ export const formatDate = (date) => {
   if (!date) {
     return "";
   }
-  const d = _parseDate(date);
-  return _formatDate(d, "dd.MM.yyyy");
+  return date.replace(/\//g, ".");
 };
 
 export const formatSearchResult = (e) => {
@@ -62,5 +58,7 @@ export const formatSearchResult = (e) => {
   if (!hl) {
     return e.title;
   }
+
+  console.log(hl)
   return hl.replace(/<mark>/g, "<strong>").replace(/<\/mark>/g, "</strong>");
 };

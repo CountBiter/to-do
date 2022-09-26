@@ -31,7 +31,7 @@
       entries = [];
     }
     return (fetching = getNotes({ age, search, page }).then((data) => {
-      entries = entries.concat(data.data);
+      entries = entries.concat(data);
       return data.hasMore;
     }));
   };
@@ -115,7 +115,7 @@
         <option value="archive">архив</option>
       </select>
     </p>
-    <!-- <p class="uk-search uk-search-default uk-width-1-1">
+    <p class="uk-search uk-search-default uk-width-1-1">
       <i uk-search-icon class="uk-icon uk-search-icon fas fa-search" />
       <input
         bind:value={search}
@@ -123,7 +123,7 @@
         class="uk-search-input uk-width-1-1"
         type="search"
         placeholder="Поиск по заголовку" />
-    </p> -->
+    </p>
 
     {#each entries as entry}
       <NoteCard {entry} isActive={entry._id === activeNoteId} />

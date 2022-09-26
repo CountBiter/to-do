@@ -120,14 +120,6 @@ app.post("/signup", bodyParser.urlencoded({ extended: false }), async (req, res)
   res.cookie("sessionId", sessionId, { httpOnly: true }).redirect("/dashboard");
 });
 
-// Dashboard
-
-app.get("/dashboard", auth(), async (req, res) => {
-  res.render("dashboard", {
-    user: req.user,
-  });
-});
-
 app.get("/logout", auth(), async (req, res) => {
   if (!req.user) {
     res.redirect("/");
@@ -135,6 +127,144 @@ app.get("/logout", auth(), async (req, res) => {
 
   await deleteSession(req.sessionId);
   res.clearCookie("sessionId").redirect("/");
+});
+
+// Dashboard
+
+function padTo2Digits(num) {
+  return num.toString().padStart(2, "0");
+}
+
+function formatDate(date) {
+  return [padTo2Digits(date.getDate()), padTo2Digits(date.getMonth() + 1), date.getFullYear()].join("/");
+}
+
+app.get("/dashboard", auth(), async (req, res) => {
+  if (req.user) {
+    res.render("dashboard", {
+      user: req.user,
+    });
+  }
+});
+
+app.get("/getNotes", auth(), async (req, res) => {
+  if (req.user) {
+    const allNotes = await knex.table("notes").select();
+    res.json(allNotes);
+  }
+});
+app.get("/getNotes:search", auth(), async (req, res) => {
+  if (req.user) {
+    const search = req.params.search;
+
+    const allNotes = await knex.table("notes").select();
+
+    let notesId = [];
+
+    allNotes.map((entry) => {
+      entry.title = entry.title.toLowerCase();
+
+      let searchNote;
+
+      searchNote = entry.title.match(search.toLowerCase(), "g");
+
+      if (searchNote !== null) {
+        notesId.push(entry._id);
+      }
+    });
+
+    let searchNotes = [];
+
+    for (let noteId of notesId ) {
+      searchNotes.push(await knex.table("notes").where({ _id: noteId }).first())
+   }
+    res.json(searchNotes)
+  }
+});
+app.post("/dashboard", auth(), async (req, res) => {
+  if (req.user) {
+    const { title, text } = req.body;
+
+    const idNewNotes = nanoid();
+
+    await knex.table("notes").insert({
+      title: title,
+      text: text,
+      created: formatDate(new Date()),
+      user_id: req.user.id,
+      isArchived: null,
+      _id: idNewNotes,
+    });
+
+    const newNote = await knex.table("notes").where({ _id: idNewNotes }).first();
+
+    return res.json(newNote);
+  }
+});
+
+app.get("/getNote:id", auth(), async (req, res) => {
+  if (req.user) {
+    const id = req.params.id;
+
+    const neededNote = await knex.table("notes").where({ _id: id }).first();
+
+    res.json(neededNote);
+  }
+});
+
+app.get("/archiveNote:id", auth(), async (req, res) => {
+  if (req.user) {
+    const id = req.params.id;
+
+    await knex.table("notes").where({ _id: id }).update({ isArchived: true });
+    const archiveNote = await knex.table("notes").where({ _id: id }).first();
+
+    return res.json(archiveNote);
+  }
+});
+
+app.get("/unarchiveNote:id", auth(), async (req, res) => {
+  if (req.user) {
+    const id = req.params.id;
+
+    await knex.table("notes").where({ _id: id }).update({ isArchived: null });
+    const unarchiveNote = await knex.table("notes").where({ _id: id }).first();
+
+    return res.json(unarchiveNote);
+  }
+});
+
+app.put("/editNote", auth(), async (req, res) => {
+  if (req.user) {
+    const { title, id, text } = req.body;
+
+    await knex.table("notes").where({ _id: id }).update({
+      title: title,
+      text: text,
+    });
+
+    const editNote = await knex.table("notes").where({ _id: id }).first();
+
+    return res.json(editNote);
+  }
+});
+
+app.get("/deleteNote:id", auth(), async (req, res) => {
+  if (req.user) {
+    const id = req.params.id;
+
+    await knex.table("notes").where({ _id: id }).delete();
+
+    res.send("Note deleted");
+  }
+});
+
+app.get("/deleteAllArchived", auth(), async (req, res) => {
+  if (req.user) {
+    await knex.table("notes").where({ isArchived: true }).delete();
+
+    res.send("Deleted all archive Note");
+  }
 });
 const port = process.env.PORT | 3000;
 

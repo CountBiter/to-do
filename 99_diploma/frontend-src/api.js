@@ -23,21 +23,69 @@ const req = (url, options = {}) => {
   );
 };
 
+export const getNotes = async ({ age, search, page } = {}) => {
+  if (search.length === 0) {
+    const allNotes = await req(`/getNotes`, { method: "GET" }).then((data) => {
+      return data;
+    });
 
-export const getNotes = ({ age, search, page } = {}) => {};
+    return allNotes;
+  }
 
-export const createNote = (title, text) => {};
+  const searchNotes = await req(`/getNotes${search}`, { method: "GET" }).then((data) => {
+    return data;
+  });
 
-export const getNote = (id) => {};
+  return searchNotes;
+};
 
-export const archiveNote = {};
+export const createNote = async (title, text) => {
+  const newNote = await req("/dashboard", { method: "POST", body: { title: title, text: text } }).then((data) => {
+    return data;
+  });
 
-export const unarchiveNote = {};
+  return newNote;
+};
 
-export const editNote = (id, title, text) => {};
+export const getNote = async (id) => {
+  const neededNote = await req(`/getNote${id}`, { method: "GET" }).then((data) => {
+    return data;
+  });
+  return neededNote;
+};
 
-export const deleteNote = (id) => {};
+export const archiveNote = async (id) => {
+  const archiveNoteTrue = await req(`/archiveNote${id}`, { method: "GET" }).then((data) => {
+    return data;
+  });
 
-export const deleteAllArchived = () => {};
+  return archiveNoteTrue;
+};
 
-export const notePdfUrl = (id) => {};
+export const unarchiveNote = async (id) => {
+  const unarchiveNoteTrue = await req(`/unarchiveNote${id}`, { method: "GET" }).then((data) => {
+    return data;
+  });
+
+  return unarchiveNoteTrue;
+};
+
+export const editNote = async (id, title, text) => {
+  const editNote = await req("/editNote", { method: "PUT", body: { id: id, title: title, text: text } }).then(
+    (data) => {
+      return data;
+    }
+  );
+
+  return editNote;
+};
+
+export const deleteNote = (id) => {
+  req(`/deleteNote${id}`, { method: "GET" });
+};
+
+export const deleteAllArchived = async () => {
+  req("/deleteAllArchived", { method: "GET" });
+};
+
+export const notePdfUrl = async (id) => {};
