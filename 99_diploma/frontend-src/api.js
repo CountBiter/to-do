@@ -24,8 +24,8 @@ const req = (url, options = {}) => {
 };
 
 export const getNotes = async ({ age, search, page } = {}) => {
-  if (search.length === 0) {
-    const allNotes = await req(`/getNotes`, { method: "GET" }).then((data) => {
+  if (!search) {
+    const allNotes = await req(`/getNotes?age=${age}&page=${page} `, { method: "GET" }).then((data) => {
       return data;
     });
 
@@ -88,4 +88,23 @@ export const deleteAllArchived = async () => {
   req("/deleteAllArchived", { method: "GET" });
 };
 
-export const notePdfUrl = async (id) => {};
+export const notePdfUrl = async (id) => {
+  const note = await req(`/getNote${id}`, { method: "GET" }).then((data) => {
+    return data;
+  });
+
+  fetch(`/downloadNote${id}`, { method: "GET"})
+    .then((res) => res.blob())
+    .then((blob) => {
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.style.display = "none";
+      a.href = url;
+
+      a.download = `${note.title}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+    });
+};

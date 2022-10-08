@@ -1,10 +1,17 @@
 require("dotenv").config();
 
 const express = require("express");
+const session = require("express-session");
+const passport = require("passport");
+const strategies = require("./strategies/passport-strategies.js");
+
 const bodyParser = require("body-parser");
 const cookieParser = require("cookie-parser");
+
 const nunjucks = require("nunjucks");
-const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
+const PDFDocument = require("pdfkit");
 const { nanoid } = require("nanoid");
 
 const app = express();
@@ -28,105 +35,67 @@ nunjucks.configure("views", {
 app.use(express.json());
 app.use(express.static("public"));
 
-const hash = (a) => {
-  return crypto.createHash("sha256").update(a).digest("hex");
-};
-
-const findUserByUsername = async (username) => {
-  const user = await knex.table("users").where({ username: username }).first();
-  return user;
-};
-
-const findUserBySessionID = async (sessionId) => {
-  const session = await knex.table("sessions").select("user_id").where({ session_id: sessionId }).first();
-
-  if (!session) {
-    return;
-  }
-
-  return await knex.table("users").where({ id: session.user_id }).first();
-};
-
-const createSession = async (userId) => {
-  const sessionId = nanoid();
-
-  await knex("sessions").insert({
-    user_id: userId,
-    session_id: sessionId,
-  });
-  return sessionId;
-};
-
-const deleteSession = async (sessionId) => {
-  await knex("sessions").where({ session_id: sessionId }).delete();
-};
-
-app.use(cookieParser());
-
-const auth = () => async (req, res, next) => {
-  if (!req.cookies["sessionId"]) {
-    return next();
-  }
-
-  const user = await findUserBySessionID(req.cookies["sessionId"]);
-  req.user = user;
-  req.sessionId = req.cookies["sessionId"];
-  next();
-};
+app.use(
+  session({
+    secret: "secret",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      maxAge: 24 * 60 * 60 * 1000,
+    },
+  })
+);
 
 app.set("view engine", "njk");
+app.use(express.urlencoded({ extended: false }));
 
-app.get("/", auth(), (req, res) => {
-  res.render("index", {
-    authError: req.query.authError === "true" ? "Wrong username or password" : req.query.authError,
-  });
-});
+app.use(passport.initialize());
+app.use(passport.session());
 
-// Login/Signup
-
-app.post("/login", bodyParser.urlencoded({ extended: false }), async (req, res) => {
-  const { username, password } = req.body;
-  const user = await findUserByUsername(username);
-  if (!user || user.password !== hash(password)) {
-    return res.redirect("/?authError=true");
+app.get("/", (req, res) => {
+  if (req.user) {
+    res.redirect("/dashboard");
+  } else {
+    res.render("index");
   }
-
-  const sessionId = await createSession(user.id);
-  res.cookie("sessionId", sessionId).redirect("/dashboard");
 });
 
-app.post("/signup", bodyParser.urlencoded({ extended: false }), async (req, res) => {
-  const { username, password } = req.body;
-
-  const nameToken = await knex.table("users").where({ username: username }).first();
-
-  if (username.length === 0 && password.length === 0) {
-    return res.redirect(`/?authError=You didn't provide a username or password`);
-  } else if (nameToken === undefined) {
-    console.log("Hello new User");
-  } else if (username == nameToken.username) {
-    return res.redirect(`/?authError=This name is already taken`);
+const auth = () => (req, res, next) => {
+  if (req.user) {
+    return next();
+  } else {
+    res.sendStatus(404);
   }
+};
 
-  await knex.table("users").insert({
-    username: username,
-    password: hash(password),
-    id: nanoid(),
-  });
+// Login/Signup Local
 
-  const user = await findUserByUsername(username);
-
-  const sessionId = await createSession(user.id);
-  res.cookie("sessionId", sessionId, { httpOnly: true }).redirect("/dashboard");
+app.post("/login", passport.authenticate("local-login", { failureRedirect: "/login" }), (req, res) => {
+  res.redirect("/dashboard");
 });
 
-app.get("/logout", auth(), async (req, res) => {
-  if (!req.user) {
+app.post("/signup", passport.authenticate("local-signup", { failureRedirect: "/signup" }), async (req, res) => {
+  res.redirect("/dashboard");
+});
+
+app.post("/logout", async (req, res, next) => {
+  req.logout(async function (err) {
+    if (err) {
+      return next(err);
+    }
     res.redirect("/");
-  }
+  });
+});
 
-  await deleteSession(req.sessionId);
-  res.clearCookie("sessionId").redirect("/");
+// Login/Signup GitHub
+
+app.get("/auth/github", passport.authenticate("github", { scope: ["user:email"] }), (req, res) => {
+  res.redirect("/dashboard");
+});
+
+app.get("/auth/github/callback", passport.authenticate("github", { failureRedirect: "/github" }), (req, res) => {
+  res.redirect("/");
 });
 
 // Dashboard
@@ -139,21 +108,90 @@ function formatDate(date) {
   return [padTo2Digits(date.getDate()), padTo2Digits(date.getMonth() + 1), date.getFullYear()].join("/");
 }
 
-app.get("/dashboard", auth(), async (req, res) => {
+app.get("/dashboard", async (req, res) => {
   if (req.user) {
     res.render("dashboard", {
       user: req.user,
     });
+  } else {
+    res.redirect("/");
   }
 });
 
-app.get("/getNotes", auth(), async (req, res) => {
+app.get("/getNotes", async (req, res) => {
   if (req.user) {
-    const allNotes = await knex.table("notes").select();
-    res.json(allNotes);
+    const { age, page } = req.query;
+
+    const onArciveNotes = await knex.table("notes").where({ user_id: req.user.id, isArchived: null });
+
+    let dateNotesAndId = [];
+
+    const date = new Date();
+
+    onArciveNotes.map((entry) => {
+      const objDateAndId = {};
+      objDateAndId.date = Number(entry.created.slice(0, 2));
+      objDateAndId.month = Number(entry.created.slice(3, 5));
+      objDateAndId.year = Number(entry.created.slice(6));
+      objDateAndId.id = entry._id;
+
+      dateNotesAndId.push(objDateAndId);
+    });
+
+    if (age === "1month") {
+      let oneMonthsNotes = [];
+
+      for (let data of dateNotesAndId) {
+        if (
+          (data.date <= Number(padTo2Digits(date.getDate())) &&
+            data.month === Number(padTo2Digits(date.getMonth() + 1)) &&
+            data.year === Number(padTo2Digits(date.getFullYear()))) ||
+          (data.month + 1 === Number(padTo2Digits(date.getMonth() + 1)) &&
+            data.data >= Number(padTo2Digits(date.getDate())) &&
+            data.year === padTo2Digits(date.getFullYear())) ||
+          (data.date >= Number(padTo2Digits(date.getDate())) &&
+            data.month === 12 &&
+            data.year + 1 === padTo2Digits(date.getFullYear()))
+        ) {
+          oneMonthsNotes.push(await knex.table("notes").where({ _id: data.id, isArchived: null }).first());
+        }
+      }
+
+      res.json(oneMonthsNotes);
+    } else if (age === "3months") {
+      let threeMonthsNotes = [];
+
+      for (let data of dateNotesAndId) {
+        if (
+          (data.date <= Number(padTo2Digits(date.getDate())) &&
+            12 >= data.month + 3 > Number(padTo2Digits(date.getMonth() + 1)) &&
+            data.year === Number(padTo2Digits(date.getFullYear()))) ||
+          (data.date >= Number(padTo2Digits(date.getDate())) &&
+            data.month + 3 === Number(padTo2Digits(date.getMonth() + 1))) ||
+          (data.month > Number(padTo2Digits(date.getMonth() + 1)) &&
+            data.year + 1 === Number(padTo2Digits(date.getFullYear()))) ||
+          (data.month === 10 &&
+            data.date >= Number(padTo2Digits(date.getDate())) &&
+            data.year + 1 === Number(padTo2Digits(date.getFullYear())))
+        )
+          threeMonthsNotes.push(await knex.table("notes").where({ _id: data.id, isArchived: null }).first());
+      }
+
+      threeMonthsNotes.map((entry) => {
+        entry.page = page;
+      });
+
+      res.json(threeMonthsNotes);
+    } else if (age === "alltime") {
+      res.json(onArciveNotes);
+    } else if (age === "archive") {
+      let archiveNotes = await knex.table("notes").where({ isArchived: true, user_id: req.user.id });
+
+      res.json(archiveNotes);
+    }
   }
 });
-app.get("/getNotes:search", auth(), async (req, res) => {
+app.get("/getNotes:search", async (req, res) => {
   if (req.user) {
     const search = req.params.search;
 
@@ -175,13 +213,14 @@ app.get("/getNotes:search", auth(), async (req, res) => {
 
     let searchNotes = [];
 
-    for (let noteId of notesId ) {
-      searchNotes.push(await knex.table("notes").where({ _id: noteId }).first())
-   }
-    res.json(searchNotes)
+    for (let noteId of notesId) {
+      searchNotes.push(await knex.table("notes").where({ _id: noteId }).first());
+    }
+
+    res.json(searchNotes);
   }
 });
-app.post("/dashboard", auth(), async (req, res) => {
+app.post("/dashboard", async (req, res) => {
   if (req.user) {
     const { title, text } = req.body;
 
@@ -202,7 +241,7 @@ app.post("/dashboard", auth(), async (req, res) => {
   }
 });
 
-app.get("/getNote:id", auth(), async (req, res) => {
+app.get("/getNote:id", async (req, res) => {
   if (req.user) {
     const id = req.params.id;
 
@@ -212,7 +251,7 @@ app.get("/getNote:id", auth(), async (req, res) => {
   }
 });
 
-app.get("/archiveNote:id", auth(), async (req, res) => {
+app.get("/archiveNote:id", async (req, res) => {
   if (req.user) {
     const id = req.params.id;
 
@@ -223,7 +262,7 @@ app.get("/archiveNote:id", auth(), async (req, res) => {
   }
 });
 
-app.get("/unarchiveNote:id", auth(), async (req, res) => {
+app.get("/unarchiveNote:id", async (req, res) => {
   if (req.user) {
     const id = req.params.id;
 
@@ -234,7 +273,7 @@ app.get("/unarchiveNote:id", auth(), async (req, res) => {
   }
 });
 
-app.put("/editNote", auth(), async (req, res) => {
+app.put("/editNote", async (req, res) => {
   if (req.user) {
     const { title, id, text } = req.body;
 
@@ -249,7 +288,7 @@ app.put("/editNote", auth(), async (req, res) => {
   }
 });
 
-app.get("/deleteNote:id", auth(), async (req, res) => {
+app.get("/deleteNote:id", async (req, res) => {
   if (req.user) {
     const id = req.params.id;
 
@@ -259,11 +298,53 @@ app.get("/deleteNote:id", auth(), async (req, res) => {
   }
 });
 
-app.get("/deleteAllArchived", auth(), async (req, res) => {
+app.get("/deleteAllArchived", async (req, res) => {
   if (req.user) {
     await knex.table("notes").where({ isArchived: true }).delete();
 
     res.send("Deleted all archive Note");
+  }
+});
+
+app.get("/downloadNote:id", async (req, res) => {
+  if (req.user) {
+    const id = req.params.id;
+    try {
+      let pdfDoc = new PDFDocument();
+
+      const note = await knex.table("notes").where({ _id: id }).first();
+
+      const title = note.title;
+      const text = note.text;
+
+      pdfDoc.pipe(fs.createWriteStream(`./pdfFiles/${title}.pdf`));
+      pdfDoc.font("./font/OpenSans-Regular.ttf").text(
+        `${title}
+
+
+
+      `,
+        { align: "center" }
+      );
+      pdfDoc.font("./font/OpenSans-Regular.ttf").text(`${text}`);
+      pdfDoc.end();
+
+      const fileName = `./pdfFiles/${note.title}.pdf`;
+
+      setTimeout(() => {
+        if (fs.existsSync(path.join(__dirname, fileName))) {
+          res.download(path.join(__dirname, fileName), fileName);
+
+          setTimeout(() => {
+            fs.unlink(`./pdfFiles/${title}.pdf`, (err) => {
+              if (err) throw err;
+            });
+          }, 1000);
+        }
+      }, 3000);
+    } catch (err) {
+      console.log(err);
+    }
   }
 });
 const port = process.env.PORT | 3000;

@@ -64,6 +64,12 @@
     fetchFromScratch();
   };
 
+  const onKeyPress = e => {
+    if (e.charCode === 13) {
+      fetchFromScratch()
+    }
+  }
+
   const routeEvent = (event) => {
     const { type, id } = (event && event.detail) || {};
     switch (type) {
@@ -118,8 +124,9 @@
     <p class="uk-search uk-search-default uk-width-1-1">
       <i uk-search-icon class="uk-icon uk-search-icon fas fa-search" />
       <input
+        id="search-input"
         bind:value={search}
-        on:keyup={fetchFromScratch}
+        on:keypress={onKeyPress}
         class="uk-search-input uk-width-1-1"
         type="search"
         placeholder="Поиск по заголовку" />
