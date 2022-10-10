@@ -24,9 +24,6 @@ const knex = require("knex")({
   },
 });
 
-// const { attachPaginate } = require('knex-paginate');
-// attachPaginate();
-
 nunjucks.configure("views", {
   autoescape: true,
   express: app,
@@ -186,7 +183,7 @@ app.get("/getNotes", auth(), async (req, res) => {
     } else if (age === "archive") {
       let archiveNotes = await knex
         .table("notes")
-        .where({ isArchived: true, user_id: req.user.id }.limit(perPage).offset(page === "1" ? 0 : (page - 1) * perPage));
+        .where({ isArchived: true, user_id: req.user.id }).limit(perPage).offset(page === "1" ? 0 : (page - 1) * perPage);
 
       archiveNotes.map((entry) => {
         const date = new Date(Number(entry.created));
