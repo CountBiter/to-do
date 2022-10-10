@@ -59,6 +59,5 @@ export const formatSearchResult = (e) => {
     return e.title;
   }
 
-  console.log(hl)
   return hl.replace(/<mark>/g, "<strong>").replace(/<\/mark>/g, "</strong>");
 };

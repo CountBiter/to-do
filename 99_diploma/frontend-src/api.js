@@ -26,7 +26,12 @@ const req = (url, options = {}) => {
 export const getNotes = async ({ age, search, page } = {}) => {
   if (!search) {
     const allNotes = await req(`/getNotes?age=${age}&page=${page} `, { method: "GET" }).then((data) => {
-      return data;
+      if (data.length === 10) {
+        data.hasMore = true;
+        return data;
+      } else {
+        return data;
+      }
     });
 
     return allNotes;
@@ -93,7 +98,7 @@ export const notePdfUrl = async (id) => {
     return data;
   });
 
-  fetch(`/downloadNote${id}`, { method: "GET"})
+  fetch(`/downloadNote${id}`, { method: "GET" })
     .then((res) => res.blob())
     .then((blob) => {
       const url = window.URL.createObjectURL(blob);

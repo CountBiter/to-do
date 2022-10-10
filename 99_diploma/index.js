@@ -5,9 +5,6 @@ const session = require("express-session");
 const passport = require("passport");
 const strategies = require("./strategies/passport-strategies.js");
 
-const bodyParser = require("body-parser");
-const cookieParser = require("cookie-parser");
-
 const nunjucks = require("nunjucks");
 const fs = require("fs");
 const path = require("path");
@@ -26,6 +23,9 @@ const knex = require("knex")({
     password: process.env.DB_PASSWORD,
   },
 });
+
+// const { attachPaginate } = require('knex-paginate');
+// attachPaginate();
 
 nunjucks.configure("views", {
   autoescape: true,
@@ -65,17 +65,17 @@ const auth = () => (req, res, next) => {
   if (req.user) {
     return next();
   } else {
-    res.sendStatus(404);
+    res.redirect("/");
   }
 };
 
 // Login/Signup Local
 
-app.post("/login", passport.authenticate("local-login", { failureRedirect: "/login" }), (req, res) => {
+app.post("/login", passport.authenticate("local-login", { failureRedirect: "/login" }), auth(), async(req, res) => {
   res.redirect("/dashboard");
 });
 
-app.post("/signup", passport.authenticate("local-signup", { failureRedirect: "/signup" }), async (req, res) => {
+app.post("/signup", passport.authenticate("local-signup", { failureRedirect: "/signup" }), auth(), async (req, res) => {
   res.redirect("/dashboard");
 });
 
@@ -90,25 +90,26 @@ app.post("/logout", async (req, res, next) => {
 
 // Login/Signup GitHub
 
-app.get("/auth/github", passport.authenticate("github", { scope: ["user:email"] }), (req, res) => {
+app.get("/auth/github", passport.authenticate("github", { scope: ["user:email"] }), auth(), (req, res) => {
   res.redirect("/dashboard");
 });
 
-app.get("/auth/github/callback", passport.authenticate("github", { failureRedirect: "/github" }), (req, res) => {
-  res.redirect("/");
-});
+app.get(
+  "/auth/github/callback",
+  passport.authenticate("github", { failureRedirect: "/github" }),
+  auth(),
+  (req, res) => {
+    res.redirect("/");
+  }
+);
 
 // Dashboard
 
-function padTo2Digits(num) {
+const padTo2Digits = (num) => {
   return num.toString().padStart(2, "0");
-}
+};
 
-function formatDate(date) {
-  return [padTo2Digits(date.getDate()), padTo2Digits(date.getMonth() + 1), date.getFullYear()].join("/");
-}
-
-app.get("/dashboard", async (req, res) => {
+app.get("/dashboard", auth(), async (req, res) => {
   if (req.user) {
     res.render("dashboard", {
       user: req.user,
@@ -118,80 +119,87 @@ app.get("/dashboard", async (req, res) => {
   }
 });
 
-app.get("/getNotes", async (req, res) => {
+app.get("/getNotes", auth(), async (req, res) => {
   if (req.user) {
     const { age, page } = req.query;
+    const perPage = 10;
 
-    const onArciveNotes = await knex.table("notes").where({ user_id: req.user.id, isArchived: null });
+    console.log(page)
 
-    let dateNotesAndId = [];
-
-    const date = new Date();
-
-    onArciveNotes.map((entry) => {
-      const objDateAndId = {};
-      objDateAndId.date = Number(entry.created.slice(0, 2));
-      objDateAndId.month = Number(entry.created.slice(3, 5));
-      objDateAndId.year = Number(entry.created.slice(6));
-      objDateAndId.id = entry._id;
-
-      dateNotesAndId.push(objDateAndId);
-    });
+    const entries = await knex
+      .table("notes")
+      .where({ user_id: req.user.id, isArchived: null })
+      .limit(perPage)
+      .offset(page === "1" ? 0 : (page - 1) * perPage);
 
     if (age === "1month") {
       let oneMonthsNotes = [];
 
-      for (let data of dateNotesAndId) {
-        if (
-          (data.date <= Number(padTo2Digits(date.getDate())) &&
-            data.month === Number(padTo2Digits(date.getMonth() + 1)) &&
-            data.year === Number(padTo2Digits(date.getFullYear()))) ||
-          (data.month + 1 === Number(padTo2Digits(date.getMonth() + 1)) &&
-            data.data >= Number(padTo2Digits(date.getDate())) &&
-            data.year === padTo2Digits(date.getFullYear())) ||
-          (data.date >= Number(padTo2Digits(date.getDate())) &&
-            data.month === 12 &&
-            data.year + 1 === padTo2Digits(date.getFullYear()))
-        ) {
-          oneMonthsNotes.push(await knex.table("notes").where({ _id: data.id, isArchived: null }).first());
+      for (let note of entries) {
+        const dateNote = Date.now() - note.created;
+        if (dateNote < 2592000000) {
+          oneMonthsNotes.push(note);
         }
       }
+
+      oneMonthsNotes.map((entry) => {
+        const date = new Date(Number(entry.created));
+        entry.created = `${[padTo2Digits(date.getDate()), padTo2Digits(date.getMonth() + 1), date.getFullYear()].join(
+          "/"
+        )}`;
+      });
 
       res.json(oneMonthsNotes);
     } else if (age === "3months") {
       let threeMonthsNotes = [];
 
-      for (let data of dateNotesAndId) {
-        if (
-          (data.date <= Number(padTo2Digits(date.getDate())) &&
-            12 >= data.month + 3 > Number(padTo2Digits(date.getMonth() + 1)) &&
-            data.year === Number(padTo2Digits(date.getFullYear()))) ||
-          (data.date >= Number(padTo2Digits(date.getDate())) &&
-            data.month + 3 === Number(padTo2Digits(date.getMonth() + 1))) ||
-          (data.month > Number(padTo2Digits(date.getMonth() + 1)) &&
-            data.year + 1 === Number(padTo2Digits(date.getFullYear()))) ||
-          (data.month === 10 &&
-            data.date >= Number(padTo2Digits(date.getDate())) &&
-            data.year + 1 === Number(padTo2Digits(date.getFullYear())))
-        )
-          threeMonthsNotes.push(await knex.table("notes").where({ _id: data.id, isArchived: null }).first());
+      for (let note of entries) {
+        const dateNote = Date.now() - note.created;
+        if (dateNote < 2592000000 * 3) {
+          threeMonthsNotes.push(note);
+        }
       }
 
       threeMonthsNotes.map((entry) => {
-        entry.page = page;
+        const date = new Date(Number(entry.created));
+        entry.created = `${[padTo2Digits(date.getDate()), padTo2Digits(date.getMonth() + 1), date.getFullYear()].join(
+          "/"
+        )}`;
       });
 
       res.json(threeMonthsNotes);
     } else if (age === "alltime") {
-      res.json(onArciveNotes);
+      const allTimeNotes = await knex
+        .table("notes")
+        .where({ user_id: req.user.id, isArchived: null })
+        .limit(perPage)
+        .offset(page === "1" ? 0 : (page - 1) * perPage);
+
+      allTimeNotes.map((entry) => {
+        const date = new Date(Number(entry.created));
+        entry.created = `${[padTo2Digits(date.getDate()), padTo2Digits(date.getMonth() + 1), date.getFullYear()].join(
+          "/"
+        )}`;
+      });
+
+      res.json(allTimeNotes);
     } else if (age === "archive") {
-      let archiveNotes = await knex.table("notes").where({ isArchived: true, user_id: req.user.id });
+      let archiveNotes = await knex
+        .table("notes")
+        .where({ isArchived: true, user_id: req.user.id }.limit(perPage).offset(page === "1" ? 0 : (page - 1) * perPage));
+
+      archiveNotes.map((entry) => {
+        const date = new Date(Number(entry.created));
+        entry.created = `${[padTo2Digits(date.getDate()), padTo2Digits(date.getMonth() + 1), date.getFullYear()].join(
+          "/"
+        )}`;
+      });
 
       res.json(archiveNotes);
     }
   }
 });
-app.get("/getNotes:search", async (req, res) => {
+app.get("/getNotes:search", auth(), async (req, res) => {
   if (req.user) {
     const search = req.params.search;
 
@@ -220,7 +228,7 @@ app.get("/getNotes:search", async (req, res) => {
     res.json(searchNotes);
   }
 });
-app.post("/dashboard", async (req, res) => {
+app.post("/dashboard", auth(), async (req, res) => {
   if (req.user) {
     const { title, text } = req.body;
 
@@ -229,7 +237,7 @@ app.post("/dashboard", async (req, res) => {
     await knex.table("notes").insert({
       title: title,
       text: text,
-      created: formatDate(new Date()),
+      created: Date.now(),
       user_id: req.user.id,
       isArchived: null,
       _id: idNewNotes,
@@ -241,7 +249,7 @@ app.post("/dashboard", async (req, res) => {
   }
 });
 
-app.get("/getNote:id", async (req, res) => {
+app.get("/getNote:id", auth(), async (req, res) => {
   if (req.user) {
     const id = req.params.id;
 
@@ -251,7 +259,7 @@ app.get("/getNote:id", async (req, res) => {
   }
 });
 
-app.get("/archiveNote:id", async (req, res) => {
+app.get("/archiveNote:id", auth(), async (req, res) => {
   if (req.user) {
     const id = req.params.id;
 
@@ -262,7 +270,7 @@ app.get("/archiveNote:id", async (req, res) => {
   }
 });
 
-app.get("/unarchiveNote:id", async (req, res) => {
+app.get("/unarchiveNote:id", auth(), async (req, res) => {
   if (req.user) {
     const id = req.params.id;
 
@@ -273,7 +281,7 @@ app.get("/unarchiveNote:id", async (req, res) => {
   }
 });
 
-app.put("/editNote", async (req, res) => {
+app.put("/editNote", auth(), async (req, res) => {
   if (req.user) {
     const { title, id, text } = req.body;
 
@@ -288,7 +296,7 @@ app.put("/editNote", async (req, res) => {
   }
 });
 
-app.get("/deleteNote:id", async (req, res) => {
+app.get("/deleteNote:id", auth(), async (req, res) => {
   if (req.user) {
     const id = req.params.id;
 
@@ -306,7 +314,7 @@ app.get("/deleteAllArchived", async (req, res) => {
   }
 });
 
-app.get("/downloadNote:id", async (req, res) => {
+app.get("/downloadNote:id", auth(), async (req, res) => {
   if (req.user) {
     const id = req.params.id;
     try {
@@ -339,7 +347,7 @@ app.get("/downloadNote:id", async (req, res) => {
             fs.unlink(`./pdfFiles/${title}.pdf`, (err) => {
               if (err) throw err;
             });
-          }, 1000);
+          }, 10000);
         }
       }, 3000);
     } catch (err) {
