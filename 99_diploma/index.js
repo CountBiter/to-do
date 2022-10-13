@@ -356,7 +356,7 @@ app.get("/downloadNote:id", auth(), async (req, res) => {
     }
   }
 });
-const port = process.env.PORT | 3000;
+const port = process.env.PORT || 3000;
 
 app.listen(port, () => {
   console.log(`     location is http://localhost:${port}`);
