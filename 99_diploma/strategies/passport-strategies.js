@@ -8,7 +8,7 @@ const passport = require("passport");
 const crypto = require("crypto");
 const { nanoid } = require("nanoid");
 
-const port = process.env.PORT || 3000;
+// const port = process.env.PORT || 3000;
 
 const hash = (d) => {
   return crypto.createHash("sha256").update(d).digest("hex");
