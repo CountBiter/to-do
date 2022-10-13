@@ -1,4 +1,4 @@
-require("dotenv").config()
+require("dotenv").config();
 
 const LocalStrategies = require("passport-local").Strategy;
 const GitHubStrategy = require("passport-github2").Strategy;
@@ -107,7 +107,7 @@ passport.use(
     {
       clientID: "8c8febfc5bdca6244997",
       clientSecret: "1b15da7f2c17466ec5fefcef600c684e4e578a5d",
-      callbackURL: `http://localhost:${port}/auth/github/callback`,
+      callbackURL: `https://to-do-pr.herokuapp.com//auth/github/callback`,
     },
     async (accessToken, refreshToken, profile, done) => {
       try {

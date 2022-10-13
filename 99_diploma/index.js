@@ -125,8 +125,6 @@ app.get("/getNotes", auth(), async (req, res) => {
     const { age, page } = req.query;
     const perPage = 10;
 
-    console.log(page)
-
     const entries = await knex
       .table("notes")
       .where({ user_id: req.user.id, isArchived: null })
