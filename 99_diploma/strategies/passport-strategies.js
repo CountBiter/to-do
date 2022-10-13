@@ -1,3 +1,5 @@
+require("dotenv").config()
+
 const LocalStrategies = require("passport-local").Strategy;
 const GitHubStrategy = require("passport-github2").Strategy;
 
