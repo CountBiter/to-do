@@ -100,7 +100,7 @@ app.get(
   passport.authenticate("github", { failureRedirect: "/github" }),
   auth(),
   (req, res) => {
-    res.redirect("/");
+    res.redirect("/dashboard");
   }
 );
 

@@ -1,5 +1,6 @@
 const LocalStrategies = require("passport-local").Strategy;
 const GitHubStrategy = require("passport-github2").Strategy;
+console.log(location.origin)
 
 const passport = require("passport");
 
