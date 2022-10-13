@@ -1,7 +1,8 @@
 require("dotenv").config();
 
 const express = require("express");
-const session = require("cookie-session");
+const session = require("express-session");
+const MemoryStore = require('memorystore')(session)
 const passport = require("passport");
 const strategies = require("./strategies/passport-strategies.js");
 
@@ -39,8 +40,11 @@ app.use(
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000,
+      maxAge: 86400000,
     },
+    store: new MemoryStore({
+      checkPeriod: 86400000
+    }),
   })
 );
 
