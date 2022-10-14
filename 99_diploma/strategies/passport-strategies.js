@@ -8,7 +8,7 @@ const passport = require("passport");
 const crypto = require("crypto");
 const { nanoid } = require("nanoid");
 
-// const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3000;
 
 const hash = (d) => {
   return crypto.createHash("sha256").update(d).digest("hex");
@@ -107,7 +107,7 @@ passport.use(
     {
       clientID: "8c8febfc5bdca6244997",
       clientSecret: "1b15da7f2c17466ec5fefcef600c684e4e578a5d",
-      callbackURL: `https://to-do-pr.herokuapp.com//auth/github/callback`,
+      callbackURL: `http://localhost:${port}/auth/github/callback`,
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
