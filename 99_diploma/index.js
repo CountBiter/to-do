@@ -221,7 +221,7 @@ app.get("/getNotes:search", auth(), async (req, res) => {
     let searchNotes = [];
 
     for (let noteId of notesId) {
-      searchNotes.push(await knex.table("notes").where({ _id: noteId }).first());
+      searchNotes.push(await knex.table("notes").where({ _id: noteId, user_id: req.user.id }).first());
     }
 
     res.json(searchNotes);
